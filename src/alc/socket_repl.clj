@@ -34,21 +34,28 @@
 (defn start
   [{:keys [address name port repl]}]
   (let [port (or port (find-port))
-        _ (assert port (str "Failed to obtain port"))
+        ;; XXX: reconsider use of assert
+        _ (assert (and port (not= port -1)
+                  (str "Failed to obtain port")))
         name (or name (str port))]
     (if-let [prop (System/getProperty "clojure.server.repl")]
       (println "Socket repl detected? " prop)
-      (do
-        ;; XXX: only do this if repl creation succeeds
-        (System/setProperty "clojure.server.repl"
-                            (str "{"
-                                 "\\:port," port ","
-                                 "\\:accept,clojure.core.server/repl"
-                                 "}"))
-        (ccs/start-server {:address address
-                           :port port
-                           :name name
-                           :accept 'clojure.core.server/repl})
-        (println "Socket repl port:" port)))
-    (when repl
-      (cm/main "--repl"))))
+      (when-let [socket
+                 (try
+                   (ccs/start-server {:address address
+                                      :port port
+                                      :name name
+                                      :accept 'clojure.core.server/repl})
+                   (catch Exception e
+                     (println "start-server failed:" e)
+                     nil))]
+        ;; XXX: only do this if repl creation succeeds -- correct check?
+        (when (.isBound socket)
+          (System/setProperty "clojure.server.repl"
+                              (str "{"
+                                   "\\:port," port ","
+                                   "\\:accept,clojure.core.server/repl"
+                                   "}"))
+          (println "Socket repl port:" port)
+          (when repl
+            (cm/main "--repl")))))))
